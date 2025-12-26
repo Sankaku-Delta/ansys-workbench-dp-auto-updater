@@ -2,6 +2,8 @@
 
 Ansys Workbench の複数プロジェクト（.wbpj）の設計ポイント（Design Points）を連続実行し、完了時にメール通知を行うバッチ処理スクリプト。
 
+> **Note:** このプロジェクトのコードのほとんどは [Claude Code](https://claude.com/claude-code) で生成されています。
+
 ## 特徴
 
 - **複数プロジェクトの自動処理**: 複数の .wbpj ファイルを順次処理
