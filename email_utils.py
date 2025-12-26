@@ -208,3 +208,176 @@ def create_subject(successful, total):
     return "[Ansys Batch] {} - {}/{} projects completed".format(
         status, successful, total
     )
+
+
+def create_project_start_subject(project_number, total_projects, project_name):
+    # type: (int, int, str) -> str
+    """
+    プロジェクト処理開始時のメール件名を作成
+
+    Args:
+        project_number (int): 現在のプロジェクト番号
+        total_projects (int): 総プロジェクト数
+        project_name (str): プロジェクト名
+
+    Returns:
+        str: メール件名
+    """
+    return "[Ansys Batch] STARTING - {}/{} - {}".format(
+        project_number, total_projects, project_name
+    )
+
+
+def format_project_start_summary(project_number, total_projects, project_name,
+                                  start_time, overall_successful, overall_processed):
+    # type: (int, int, str, datetime, int, int) -> str
+    """
+    プロジェクト処理開始時のサマリーを整形
+
+    Args:
+        project_number (int): 現在のプロジェクト番号
+        total_projects (int): 総プロジェクト数
+        project_name (str): プロジェクト名
+        start_time (datetime): 開始時刻
+        overall_successful (int): これまでに成功したプロジェクト数
+        overall_processed (int): これまでに処理したプロジェクト数
+
+    Returns:
+        str: 整形されたサマリー
+    """
+    lines = []
+
+    # プロジェクト開始情報
+    lines.append("プロジェクト処理開始 ({}/{})".format(project_number, total_projects))
+    lines.append("")
+    lines.append("プロジェクト名: {}".format(project_name))
+    lines.append("開始時刻: {}".format(start_time.strftime("%Y-%m-%d %H:%M:%S")))
+    lines.append("")
+
+    # 全体の進捗
+    lines.append("全体の進捗:")
+    lines.append("  処理済み: {}/{}".format(overall_processed, total_projects))
+    lines.append("  成功: {}".format(overall_successful))
+    lines.append("  失敗: {}".format(overall_processed - overall_successful))
+    remaining = total_projects - overall_processed
+    lines.append("  残り: {}".format(remaining))
+
+    return "\n".join(lines)
+
+
+def _create_project_start_email_body(summary, full_log):
+    # type: (str, str) -> str
+    """
+    プロジェクト処理開始時のメール本文を作成
+
+    Args:
+        summary (str): 開始通知のサマリー
+        full_log (str): ログ全文
+
+    Returns:
+        str: メール本文
+    """
+    body_parts = []
+
+    # ヘッダー
+    body_parts.append("=" * 60)
+    body_parts.append("Ansys Workbench Batch Runner - プロジェクト処理開始通知")
+    body_parts.append("=" * 60)
+    body_parts.append("")
+
+    # サマリーセクション
+    body_parts.append(summary)
+    body_parts.append("")
+
+    # ログセクション
+    body_parts.append("-" * 60)
+    body_parts.append("詳細ログ")
+    body_parts.append("-" * 60)
+    body_parts.append(full_log)
+
+    return "\n".join(body_parts)
+
+
+def send_project_start_email(project_number, total_projects, project_name,
+                             start_time, overall_successful, overall_processed,
+                             full_log, logger=None):
+    # type: (int, int, str, datetime, int, int, str, logging.Logger) -> bool
+    """
+    プロジェクト処理開始時にメールを送信
+
+    Args:
+        project_number (int): 現在のプロジェクト番号
+        total_projects (int): 総プロジェクト数
+        project_name (str): プロジェクト名
+        start_time (datetime): 開始時刻
+        overall_successful (int): これまでに成功したプロジェクト数
+        overall_processed (int): これまでに処理したプロジェクト数
+        full_log (str): ログ全文
+        logger (logging.Logger): ロガーインスタンス（オプション）
+
+    Returns:
+        bool: 送信成功時 True、失敗時 False
+    """
+    if not EMAIL_CONFIG.get("enabled", False):
+        if logger:
+            logger.info("Email notification is disabled in config")
+        return False
+
+    try:
+        # サマリーを作成
+        summary = format_project_start_summary(
+            project_number, total_projects, project_name,
+            start_time, overall_successful, overall_processed
+        )
+
+        # 件名を作成
+        subject = create_project_start_subject(project_number, total_projects, project_name)
+
+        # メール本文の作成
+        body = _create_project_start_email_body(summary, full_log)
+
+        # MIMEメッセージの作成
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_CONFIG["from_addr"]
+        msg["To"] = EMAIL_CONFIG["to_addr"]
+        msg["Subject"] = subject
+
+        # 本文を添付
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        # SMTPサーバーに接続して送信
+        smtp_server = EMAIL_CONFIG["smtp_server"]
+        smtp_port = EMAIL_CONFIG["smtp_port"]
+        use_tls = EMAIL_CONFIG.get("use_tls", True)
+
+        if logger:
+            logger.info("Connecting to SMTP server: {}:{}".format(smtp_server, smtp_port))
+
+        if use_tls:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+        else:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+
+        # 認証
+        username = EMAIL_CONFIG.get("username")
+        password = EMAIL_CONFIG.get("password")
+        if username and password:
+            server.login(username, password)
+
+        # メール送信
+        server.send_message(msg)
+        server.quit()
+
+        if logger:
+            logger.info("Project start notification email sent successfully to {}".format(EMAIL_CONFIG["to_addr"]))
+
+        return True
+
+    except Exception as e:
+        error_msg = "Failed to send project start notification email: {}".format(str(e))
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(error_msg)
+        return False

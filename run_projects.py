@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 try:
     from config import PROJECTS
     from logger import setup_logger
-    from email_utils import send_email, format_summary, create_subject
+    from email_utils import send_email, format_summary, create_subject, send_project_start_email
 except ImportError as e:
     print("Error importing modules: {}".format(str(e)))
     print("Make sure config.py, logger.py, and email_utils.py are in the same directory")
@@ -284,7 +284,23 @@ def main():
     successful_count = 0
 
     for i, project_path in enumerate(PROJECTS, 1):
+        # プロジェクト開始時のメール通知を送信
         project_start_time = datetime.now()
+        project_name = os.path.basename(project_path)
+
+        start_log = email_handler.get_logs()
+        send_project_start_email(
+            project_number=i,
+            total_projects=len(PROJECTS),
+            project_name=project_name,
+            start_time=project_start_time,
+            overall_successful=successful_count,
+            overall_processed=i - 1,
+            full_log=start_log,
+            logger=logger
+        )
+
+        # プロジェクトを処理
         result = process_project(project_path, logger)
         project_results.append(result)
 
